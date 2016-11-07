@@ -1,0 +1,108 @@
+<?php
+
+/**
+ * @file
+ * Contains userprofiles.module..
+ */
+
+use Drupal\Core\Routing\RouteMatchInterface;
+use Drupal\Core\Controller\ControllerBase;
+use Drupal\Core\Entity\EntityInterface;
+use Drupal\node\Entity\Node;
+use Drupal\Core\Entity;
+use Drupal\user\Entity\User;
+use Drupal\userprofiles\Entity\PrivateProfile;
+use Drupal\userprofiles\Entity\PublicProfile;
+
+/**
+ * Implements hook_help().
+ */
+function userprofiles_help($route_name, RouteMatchInterface $route_match) {
+  switch ($route_name) {
+    // Main module help for the userprofiles module.
+    case 'help.page.userprofiles':
+      $output = '';
+      $output .= '<h3>' . t('About') . '</h3>';
+      $output .= '<p>' . t('My Awesome Module') . '</p>';
+      return $output;
+
+    default:
+  }
+}
+
+/**
+ * Implements hook_cron().
+ */
+/** function userprofiles_cron() {
+	\Drupal::logger('userprofiles-cron')->error('Running');
+	//load the user list and check last
+	$users = User::loadMultiple();
+	$uids = array_keys($users);
+	$ulastID = end($uids);
+	//load the privates and check last
+	$privates = PrivateProfile::loadMultiple();
+	$ppids = array_keys($privates);
+	$plastID = end($ppids);
+
+	foreach ($ppids as $pid) {
+		if(!(in_array($pid, $uids))) {
+			$priv = PrivateProfile::load($pid);
+			$publ = PublicProfile::load($pid);
+			$priv->delete();
+			$publ->delete();
+		}
+	}
+} */
+
+/**
+ * Implements hook_user_insert().
+ */
+function userprofiles_user_insert($account) {
+    global $base_url;
+    // Grab the UID for the user account that was created and load their account
+    $uid = $account->id();
+    $user = User::load($uid);
+
+    // We need to check if the entity reference in the User account is set,
+    // if not, then we have to create a blank entity and go from there
+    if (!isset($user->field_privref->entity) && !isset($user->field_pubref->entity)) {
+      // Create the blank PrivateProfile entity
+      $private_profile = PrivateProfile::create([
+        'label' => $account->label(),
+        'name' => $account->label(),
+        'field_userref' => $user
+      ]);
+      $private_profile->save();
+
+      // Create the blank PublicProfile entity
+      $public_profile = PublicProfile::create([
+        'label' => $account->label(),
+        'name' => $account->label(),
+        'field_userref' => $user
+      ]);
+      $public_profile->status = 0;
+      $public_profile->save();
+
+      // Set the user accounts reference
+      $user->field_privref->entity = $private_profile;
+      $user->field_pubref->entity = $public_profile;
+
+      $user->field_publink = $base_url . "/profile/" . $public_profile->id() . "/view";
+      $user->field_publink->title = "View Public Profile";
+
+
+      $user->save();
+    }
+}
+
+/**
+ * Implements hook_user_delete().
+ */
+function userprofiles_user_delete($account) {
+  // Load references from deleted account, and delete them too.
+  $private_profile = $account->field_privref->entity;
+  $public_profile = $account->field_pubref->entity;
+
+  $private_profile->delete();
+  $public_profile->delete();
+}
